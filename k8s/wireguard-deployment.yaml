@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/name: tinyhttp-wireguard
+  name: tinyhttp-wireguard
+  namespace: wireguard-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tinyhttp-wireguard
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tinyhttp-wireguard
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      initContainers:
+      - name: sysctl-init
+        image: busybox
+        imagePullPolicy: IfNotPresent
+        command:
+        - sh
+        - -c
+        - |
+          echo "Checking net.ipv4.conf.all.src_valid_mark"
+          current_value=$(sysctl -n net.ipv4.conf.all.src_valid_mark)
+          if [ "$current_value" != "1" ]; then
+            echo "Setting net.ipv4.conf.all.src_valid_mark=1"
+            sysctl -w net.ipv4.conf.all.src_valid_mark=1
+            touch /lock/sysctl-applied  # Create lock file to indicate that sysctl was applied
+          else
+            echo "No change needed"
+          fi
+        securityContext:
+          privileged: true
+      containers:
+      - env:
+        - name: PEERS
+          value: "false"
+        - name: PGID
+          value: "1000"
+        - name: PUID
+          value: "1000"
+        image: docker.io/vst0name/tinyhttp-wireguard:1
+        name: wireguard
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: "http"
+          containerPort: 8888
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 100m
+            memory: 64Mi
+          requests:
+            cpu: 10m
+            memory: 32Mi
+        securityContext:
+          capabilities:
+            add:
+            - NET_ADMIN
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - sh
+              - -c
+              - |
+                echo "Checking if net.ipv4.conf.all.src_valid_mark=1 was applied"
+                if [ -f /lock/sysctl-applied ]; then
+                  echo "Reverting net.ipv4.conf.all.src_valid_mark"
+                  sysctl -w net.ipv4.conf.all.src_valid_mark=0
+                  rm -f /lock/sysctl-applied  # Cleanup lock file after reverting
+                else
+                  echo "No changes were applied, no need to revert"
+                fi
+        volumeMounts:
+        - mountPath: /tinyproxy
+          name: tinyproxy
+        - mountPath: /config/wg_confs
+          name: wireguard
+        - mountPath: /lock
+          name: tmp-lock
+      hostname: wireguard
+      restartPolicy: Always
+      volumes:
+      - configMap:
+          name: tinyproxy
+        name: tinyproxy
+      - configMap:
+          name: wireguard
+        name: wireguard
+      - name: tmp-lock
+        emptyDir:
+          medium: Memory

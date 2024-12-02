@@ -1,0 +1,18 @@
+apiVersion: v1
+data:
+  tinyproxy.conf: |-
+    Port 8888
+    Timeout 600
+    LogLevel Info
+    Syslog Off
+    DisableViaHeader yes
+    Allow 192.168.0.0/16
+    Allow 10.42.0.0/16
+    Allow 10.42.0.0/16
+    Allow 127.0.0.1
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/name: tinyhttp-wireguard
+  name: tinyproxy
+  namespace: wireguard-proxy

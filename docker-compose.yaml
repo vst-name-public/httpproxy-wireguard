@@ -1,0 +1,24 @@
+---
+services:
+  wireguard:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    container_name: wireguard
+    hostname: wireguard
+    environment:
+      PEERS: false
+      PUID : 1000
+      PGID : 1000
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    volumes:
+      - ./conf.d/tinyproxy:/tinyproxy
+      - ./conf.d/wireguard:/config
+      - /lib/modules:/lib/modules
+    ports:
+      - "62820:51820/udp"
+      - "8888:8888/tcp"
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
