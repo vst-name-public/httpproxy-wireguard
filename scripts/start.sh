@@ -25,7 +25,19 @@ trap cleanup SIGINT SIGTERM HUP INT QUIT TERM
 TINYPROXY_PID=""
 tinyproxy_up(){
     echo "Starting tinyproxy"
-    tinyproxy -c /app/tinyproxy.conf
+    TINYPROXY_CONF=$(ls /tinyproxy/*.conf 2>/dev/null)
+
+    if [ -z "$TINYPROXY_CONF" ]; then
+        echo "No TinyProxy config found, using default."
+        tinyproxy -c /app/tinyproxy.conf
+    elif [ $(echo "$TINYPROXY_CONF" | wc -l) -eq 1 ]; then
+        echo "Using TinyProxy config $TINYPROXY_CONF"
+        tinyproxy -c "$TINYPROXY_CONF"
+    else
+        echo "ERROR: Multiple TinyProxy config files found, only a single config file is allowed."
+        exit
+    fi
+
 
     TIMEOUT=10
     ELAPSED_TIME=0

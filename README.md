@@ -9,11 +9,17 @@ This project provides a minimal WireGuard HTTP/s proxy using TinyProxy. It allow
 - **Health Check**: Ensures the proxy and VPN are running correctly.
 - **Custom Configurations**: Allows users to configure WireGuard tunnels and TinyProxy behavior via configuration files.
 
-## Docker Setup
+### Base image
 
 The project uses a custom Docker image based on `linuxserver/wireguard` with TinyProxy added.
+[Github Repo](https://github.com/linuxserver/docker-wireguard)
+### Initial source
+
+The repo is based on the [wireguard-http-proxy](https://github.com/noamanahmed/wireguard-http-proxy) project.
+
 
 ### start.sh
+
 The ```start.sh``` script manages the lifecycle of TinyProxy and WireGuard. It ensures that both TinyProxy and WireGuard are running and handles cleanup when the container is stopped.
 
 ### healthcheck.sh
@@ -21,11 +27,15 @@ The ```start.sh``` script manages the lifecycle of TinyProxy and WireGuard. It e
 The ```healthcheck.sh``` script checks the health of the WireGuard tunnels by pinging various endpoints. If any of the tunnels are down or unreachable, the script will fail, which helps to detect issues with the setup.
 
 ### Configuration
-
+#### Wireguard
 The WireGuard configuration files should be placed in the container at ```/config/wg_confs/``` directory, or ```/conf.d/wireguard/gb_confs``` for docker compose . The start.sh script will automatically detect and load the configuration files.
+#### TinyProxy
+Customized TinyProxy configuration file can be placed in the container at ```/app/tinyproxy/``` directory. The start.sh script will automatically detect and load the configuration file.
+
 
 # Running the Container
 ## Docker
+
 You can use included docker compose example at deployment/docker-compose.yaml
 
 Alternatively, to run the container with the default settings, use the following command:
@@ -50,11 +60,19 @@ This command will start the container with TinyProxy running on port 8888 and Wi
 
 You can also deploy this setup on Kubernetes using the following configuration files. The example includes an ```initContainer``` to ensure the correct sysctl value is set, along with the necessary configurations for WireGuard and TinyProxy.
 
-### Health Check
-The container runs a health check using healthcheck.sh. The health check pings random endpoints via the active WireGuard tunnels to ensure they are working properly.
+#### Healthcheck
+Kubernetes does not support Dockerfile ```HEALTHCKECH```, so we need to use a ```livenessProbe``` to check the health of the container. The ```healthcheck.sh``` script is used to check the health of the WireGuard tunnels.
 
-## Licence
-This project is licensed under the GNU General Public License v3.0 or later. See the [LICENSE](https://github.com/vst-name/httpproxy-wireguard/README) file for more details.
+### Configuration
+
+#### TinyProxy
+The TinyProxy configuration is stored in a ConfigMap named ```tinyproxy-config```. The ConfigMap is mounted as a volume in the container at ```/app/tinyproxy``` as a ```.conf``` file.
+
+#### WireGuard
+The WireGuard configuration files are stored in a Secret named ```wireguard-config```. The Secret is mounted as a volume in the container at ```/config/wg_confs```.
+
+# Licence
+This project is licensed under the GNU General Public License v3.0 or later. See the [LICENCE](https://github.com/vst-name/httpproxy-wireguard/blob/main/LICENCE) file for more details.
 
 
 This version of the `README.md` reflects that the project is licensed under the GNU General Public License v3.0 or later. If you need further details or adjustments, let me know!

@@ -80,7 +80,7 @@ spec:
                   echo "No changes were applied, no need to revert"
                 fi
         volumeMounts:
-        - mountPath: /tinyproxy
+        - mountPath: /app/tinyproxy
           name: tinyproxy
         - mountPath: /config/wg_confs
           name: wireguard

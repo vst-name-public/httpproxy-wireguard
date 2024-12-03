@@ -107,10 +107,6 @@ jobs:
             exit 1
         fi
 
-    - name: debug
-      run: |
-        echo "${{ steps.meta.outputs.tags }}"
-
     - name: Build and export to Docker Hub
       uses: docker/build-push-action@v6
       with:
