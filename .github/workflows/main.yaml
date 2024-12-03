@@ -4,6 +4,11 @@ on:
   push:
     branches:
     - main
+    tags:
+      - 'v*.*.*'
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   REGISTRY_ORG: vst0name
@@ -46,7 +51,10 @@ jobs:
           latest=auto
         tags: |
           type=raw,value=${{ env.VERSION }}
-          type=raw,value=${{ env.GITHUB_REF_NAME }}
+          type=ref,event=branch
+          type=semver,pattern={{version}}
+          type=ref,event=tag
+          type=sha
         labels: |
           "org.opencontainers.image.title=HTTPProxy-Wireguard"
           "org.opencontainers.image.description=A minimal WireGuard HTTP/s proxy with TinyHTTP"
@@ -72,11 +80,7 @@ jobs:
     - name: Test the image
       id: test
       run: |
-        docker image ls
-        echo "${{ env.REGISTRY_REPO }}/:${{ env.VERSION }}"
-        TIMEOUT=10
-        ELAPSED_TIME=0
-        docker run -d \
+        CONTAINER_ID=$(docker run -d \
         --name ${{ env.REGISTRY_REPO }}-${{ env.VERSION }} \
         --hostname wireguard \
         --env PEERS=false \
@@ -89,21 +93,43 @@ jobs:
         --volume /lib/modules:/lib/modules \
         --publish 8888:8888/tcp \
         --sysctl net.ipv4.conf.all.src_valid_mark=1 \
-        ${{ env.REGISTRY_ORG }}/${{ env.REGISTRY_REPO }}:${{ env.VERSION }}
+        ${{ env.REGISTRY_ORG }}/${{ env.REGISTRY_REPO }}:${{ env.VERSION }})
 
-        if [ $? == 0 ]; then
+        TIMEOUT=10
+        ELAPSED_TIME=0
+
+        if [ -n "$CONTAINER_ID" ]; then
             while ! curl --proxy http://localhost:8888 https://google.com > /dev/null; do
                 if [ $ELAPSED_TIME -ge $TIMEOUT ]; then
-                    echo "Test timed out after $TIMEOUT seconds"
+                    echo "HTTP test timed out after $TIMEOUT seconds"
                     exit 1
                 fi
                 echo "Waiting for container to start..."
                 sleep 1
-                ELAPSED_TIME=$((ELAPSED_TIME + WAIT_TIME))
+                ELAPSED_TIME=$((ELAPSED_TIME + 1))
             done
-            
+            echo "HTTP test PASS"
         else
-            echo "Test failed"
+            echo "HTTP test failed"
+            exit 1
+        fi
+        
+        TIMEOUT=10
+        ELAPSED_TIME=0
+
+        if [ -n "$CONTAINER_ID" ]; then
+            while ! docker exec $CONTAINER_ID nslookup google.com 127.0.0.1 > /dev/null; do
+                if [ $ELAPSED_TIME -ge $TIMEOUT ]; then
+                    echo "DNS test timed out after $TIMEOUT seconds"
+                    exit 1
+                fi
+                echo "Waiting for DNS to become available in container..."
+                sleep 1
+                ELAPSED_TIME=$((ELAPSED_TIME + 1))
+            done
+            echo "DNS test PASS"
+        else
+            echo "Container startup failed"
             exit 1
         fi
 
