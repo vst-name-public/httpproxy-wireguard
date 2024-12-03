@@ -46,8 +46,8 @@ spec:
           value: "1000"
         - name: PUID
           value: "1000"
-        image: docker.io/vst0name/tinyhttp-wireguard:1
-        name: wireguard
+        image: docker.io/vst0name/httpproxy-wireguard:latest
+        name: httpproxy-wireguard
         imagePullPolicy: IfNotPresent
         ports:
         - name: "http"

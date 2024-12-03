@@ -1,9 +1,10 @@
 ---
 services:
   wireguard:
-    build:
-      context: .
-      dockerfile: ./Dockerfile
+    # build:
+    #   context: .
+    #   dockerfile: ../Dockerfile
+    image: vst0name/httpproxy-wireguard:latest
     container_name: wireguard
     hostname: wireguard
     environment:
