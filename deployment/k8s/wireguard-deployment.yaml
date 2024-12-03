@@ -7,11 +7,14 @@ metadata:
   namespace: wireguard-proxy
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app.kubernetes.io/name: tinyhttp-wireguard
-  strategy:
-    type: Recreate
   template:
     metadata:
       labels:
@@ -19,6 +22,18 @@ spec:
     spec:
       nodeSelector:
         kubernetes.io/arch: amd64
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                  - tinyhttp-wireguard
+              topologyKey: kubernetes.io/hostname
       initContainers:
       - name: sysctl-init
         image: busybox
@@ -39,27 +54,27 @@ spec:
         securityContext:
           privileged: true
       containers:
-      - env:
+      - image: docker.io/vst0name/httpproxy-wireguard:latest
+        name: httpproxy-wireguard
+        imagePullPolicy: IfNotPresent
+        env:
         - name: PEERS
           value: "false"
         - name: PGID
           value: "1000"
         - name: PUID
           value: "1000"
-        image: docker.io/vst0name/httpproxy-wireguard:latest
-        name: httpproxy-wireguard
-        imagePullPolicy: IfNotPresent
         ports:
         - name: "http"
           containerPort: 8888
           protocol: TCP
         resources:
-          limits:
-            cpu: 100m
-            memory: 64Mi
           requests:
             cpu: 10m
             memory: 32Mi
+          # limits:
+          #   cpu: 100m
+          #   memory: 64Mi
         securityContext:
           capabilities:
             add:
@@ -79,6 +94,23 @@ spec:
                 else
                   echo "No changes were applied, no need to revert"
                 fi
+        livenessProbe:
+          exec:
+            command:
+            - /bin/bash
+            - -c
+            - /app/healthcheck.sh
+          failureThreshold: 3
+          periodSeconds: 5
+        readinessProbe:
+          exec:
+            command:
+            - /bin/bash
+            - -c
+            - /app/healthcheck.sh
+          failureThreshold: 6
+          initialDelaySeconds: 5
+          periodSeconds: 5
         volumeMounts:
         - mountPath: /app/tinyproxy
           name: tinyproxy

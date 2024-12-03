@@ -1,10 +1,10 @@
 ---
 services:
   wireguard:
-    # build:
-    #   context: .
-    #   dockerfile: ../Dockerfile
-    image: vst0name/httpproxy-wireguard:latest
+    build:
+      context: ../
+      dockerfile: ./Dockerfile
+    # image: vst0name/httpproxy-wireguard:latest
     container_name: wireguard
     hostname: wireguard
     environment:
@@ -23,3 +23,4 @@ services:
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1
       - net.ipv4.ip_forward=1
+    # restart: unless-stopped

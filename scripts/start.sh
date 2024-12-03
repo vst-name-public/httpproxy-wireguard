@@ -1,25 +1,29 @@
 #!/bin/bash
 
-echo $@
-
+echo "****  Starting up ****"
+echo "The PID of this script is: $$"
+# set -x
+PS4='[${BASH_SOURCE[0]}:${LINENO}] '
 
 # Function to stop TinyProxy and WireGuard processes
-cleanup() {
+_cleanup() {
     echo "Cleaning up... Stopping processes."
     if [ -n "$TINYPROXY_PID" ]; then
         echo "Stopping TinyProxy with PID $TINYPROXY_PID"
         kill $TINYPROXY_PID
-        if [[ $? -ne 0 ]]; then
-            echo "Failed to kill TinyProxy"
-            exit 1
-        fi
     fi
     wireguard_down
     exit 0
 }
-
-# Set up a trap to catch 'SIGINT SIGTERM HUP INT QUIT TERM' signales
-trap cleanup SIGINT SIGTERM HUP INT QUIT TERM
+signal_handler() {
+    echo "Caught signal: $1"
+    _cleanup
+}
+trap 'signal_handler SIGTERM' SIGTERM
+trap 'signal_handler SIGKILL' SIGKILL
+trap 'signal_handler SIGINT' SIGINT
+trap 'signal_handler SIGHUP' SIGHUP
+trap 'signal_handler SIGQUIT' SIGQUIT
 
 # Start tinyproxy
 TINYPROXY_PID=""
@@ -38,9 +42,8 @@ tinyproxy_up(){
         exit
     fi
 
-
-    TIMEOUT=10
-    ELAPSED_TIME=0
+    local TIMEOUT=10
+    local ELAPSED_TIME=0
     if [ $? == 0 ]; then
         while ! pgrep tinyproxy > /dev/null; do
             if [ $ELAPSED_TIME -ge $TIMEOUT ]; then
@@ -50,7 +53,7 @@ tinyproxy_up(){
             
             echo "Waiting for tinyproxy to start..."
             sleep 1
-            ELAPSED_TIME=$((ELAPSED_TIME + WAIT_TIME))
+            ELAPSED_TIME=$((ELAPSED_TIME + 1))
         done
         
         TINYPROXY_PID=$(pgrep tinyproxy)
@@ -87,6 +90,13 @@ fi
 unset FAILED
 
 wireguard_down(){
+    if [ -n "$1" ]; then
+        wg-quick down "$1" >> /proc/self/fd/1 2>> /proc/self/fd/2 || {
+            echo "Failed to bring down WireGuard at tunnel '$(basename "$1" .conf)'" >&2
+        }
+        echo "Brought down WireGuard at tunnel '$(basename "$1" .conf)'"
+        return
+    fi
     for tunnel in ${WG_CONFS[@]}; do
         echo "Stopping wg $tunnel"
         wg-quick down "${tunnel}" >> /proc/self/fd/1 2>> /proc/self/fd/2 || { echo "Failed to kill Wireguard at tunnel '$tunnel'"; exit 1; }
@@ -94,16 +104,24 @@ wireguard_down(){
 }
 
 wireguard_up(){
+    if [ -n "$1" ]; then
+        wg-quick up "$1" >> /proc/self/fd/1 2>> /proc/self/fd/2 || {
+            echo "Failed to bring up Wireguard at tunnel '$(basename "$1" .conf)'" >&2
+            exit 1
+        }
+        return
+    fi
+    
     for tunnel in ${WG_CONFS[@]}; do
         echo "**** Activating tunnel ${tunnel} ****"
         if wg-quick up "${tunnel}" >> /proc/self/fd/1 2>> /proc/self/fd/2; then
-            # Capture the PID of the actual WireGuard process (not wg-quick)
-            WIREGUARD_PID=$(pgrep -o -f "wg")
+            echo "**** Tunnel $(basename $tunnel .conf) is active ****"
         else
             FAILED="${tunnel}"
             break
         fi
     done
+
     if [[ -z "${FAILED}" ]]; then
         declare -p WG_CONFS > /app/activeconfs
         echo "**** All tunnels are now active ****"
@@ -119,7 +137,20 @@ wireguard_up(){
         done
         ip route del default
         echo "**** All tunnels are now down. Please fix the tunnel config ${FAILED} and restart the container ****"
+        exit 1
     fi
+
+    while [ -z "$(wg show)" ]; do
+        local TIMEOUT=10
+        local ELAPSED_TIME=0
+        if [ "$ELAPSED_TIME" -lt "$TIMEOUT" ]; then
+            echo "Waiting for WireGuard to start..."
+        else
+            echo "Wireguard failed to activate"
+            exit 1
+        fi
+        sleep 1
+    done
 }
 
 check_processes() {
@@ -128,12 +159,16 @@ check_processes() {
         tinyproxy_up
     fi
 
-    # echo "DEBUG - WIREGUARD_PID is '$WIREGUARD_PID'"
-    # if ! ps -p $WIREGUARD_PID > /dev/null; then
-    #     echo "WireGuard process is not running, restarting..."
-    #     wireguard_down
-    #     wireguard_up
-    # fi
+    for tunnel in ${WG_CONFS[@]}; do
+        local INTERFACE=$(basename $tunnel .conf)
+        local WIREGUARD_STATUS=$(wg show $INTERFACE)
+        if [ -z "$WIREGUARD_STATUS" ] || ! wg show "$INTERFACE" > /dev/null 2>&1; then
+            echo "WireGuard process is not running, restarting..."
+            wireguard_down "$tunnel"
+            sleep 10
+            wireguard_up "$tunnel"
+        fi
+    done
 }
 
 tinyproxy_up
@@ -141,5 +176,5 @@ wireguard_up
 
 while true; do
     check_processes
-    sleep 5
+    sleep 10
 done
